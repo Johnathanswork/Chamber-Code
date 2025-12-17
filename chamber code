@@ -1,0 +1,155 @@
+//This is code for an Arduino. It read from a thermocouple, and operated a heater and a cooling fan via SSRs to control temperature inside an environmental chamber.
+//It was mostly just a proof-of-concept to show a previous employer I could bring dieing chambers back to life if needed, 
+//since they were controlled by againg PIDs that were starting to break, with replacement controllers costing $5,000 or so and debates going about how to deal with the issue.
+
+
+// required library for AM2302 sensor
+#include <cactus_io_AM2302.h> 
+
+//tells arduino which pin the humidity sensor will send data to
+#define AM2302_PIN 10
+
+//required library for MAX31855 sensor
+#include <SPI.h>
+
+//required library for MAX31855 sensor
+#include "Adafruit_MAX31855.h"
+
+//define the thermocouple's amplifier pins. They can be changed by changing these pins
+#define MAXDO   7
+#define MAXCS   6
+#define MAXCLK  5
+
+//initialize thermocouple
+Adafruit_MAX31855 thermocouple(MAXCLK, MAXCS, MAXDO);
+
+//initialize humidity sensor
+AM2302 dht(AM2302_PIN);
+
+const int pin10 = 10;     // thermocouple input
+boolean hightemp = false; // defining and initializing a high temp alarm variable 
+boolean highhum = false;  // defining and initializing a high humidity alarm variable  
+int hum = 0;              // defining and initializing humidity 
+int tempC = 0;            // defining and initializing temperature 
+double thermoreading = 0; // defining and initializing raw thermocouple reading variable
+int i = 0;                // loop counter
+
+void setup() 
+{
+ 	Serial.begin(9600);
+  while (!Serial) delay(1); // wait for Serial on Leonardo/Zero, etc
+  Serial.println("AM2302 Humidity - Temperature Sensor");
+  Serial.println("RH\tTemp (C)\tTemp (F)\tHeat Index (C)\tHeat Index (F)");
+
+  pinMode(pin10, INPUT);
+  pinMode(12, OUTPUT);
+  pinMode(11, OUTPUT);
+
+  delay(500); //sensor stabilization delay.
+  dht.begin(); // start the sensor
+  delay(500); //sensor stabilization delay.
+}
+
+void loop() 
+{
+  //pull the data from the sensor
+  dht.readHumidity();
+  dht.readTemperature();
+     
+  //Fan and heater logic. This is simply sending on or off signals to the contact relay.
+  //at the time of writing this comment, pin 11 controlled the fan
+  //pin 12 controlled the heater
+  //fan/heater logic: there are also 2 alarm protocols later in the code. 
+  //They run independently of the fan and heater logic. So if a heater is stuck on or other problem, the alarm will trigger.
+  {
+    if( thermoreading > 37.5){digitalWrite(11, LOW);}  //fan on
+    else{digitalWrite(11, HIGH);}  //fan off
+
+    if( thermoreading < 37.5){digitalWrite(12, LOW);} //heater on
+    else{digitalWrite(12, HIGH);} //heater off
+  }
+
+  //sensor failure detection protocol
+  {
+    if (isnan(dht.humidity) || isnan(dht.temperature_C)) 
+    {
+      Serial.println("AM2302 sensor read failure!");
+      return;
+    }
+  }
+
+  //Prints out status if things are OK.
+  {
+  if((dht.humidity < 50)&&(highhum==true))
+    {
+      highhum = false;
+      Serial.println();
+      Serial.println("Humidity OK");
+    }
+
+    if((dht.temperature_C < 25)&&(hightemp==true))
+    {
+      hightemp = false;
+      Serial.println();
+      Serial.println("Temperature OK");
+    }
+  }
+
+  {
+    tempC=dht.temperature_C;
+    hum=dht.humidity;
+
+    //humidity printout to arduino console
+    Serial.print(dht.humidity); 
+    Serial.print(" %\t\t");
+    Serial.print(dht.temperature_C); 
+    Serial.print(" *C\t");
+    Serial.print(dht.temperature_F);
+    Serial.print(" *F\t");
+    Serial.print(dht.computeHeatIndex_C());
+    Serial.print(" *C\t");
+    Serial.print(dht.computeHeatIndex_F()); 
+    Serial.print(" *F");
+
+    //thermocouple printout
+    //The next 2 lines of non-comment code is the thermocouple's internal temperature.
+    //I'm not too familiar with it, but the tutorial code gives 2 separate printouts.
+    //Thermocouple Internal Temperature, and then Thermcouple temperature.
+    //I believe the one not labelled "Internal Temperature(IT)
+    //is supposed to be the temperature you follow so I label it "Actual Temperature" in the console printout
+    Serial.print(" ************* thermocouple: IT:  ");
+    Serial.print(thermocouple.readInternal());
+    double c = thermocouple.readCelsius();
+    thermoreading = c;
+    if (isnan(c)) 
+    {
+      Serial.println("Something wrong with thermocouple!");
+    } 
+    else 
+    {
+      Serial.print(" Actual reading: "); 
+      Serial.println(c);
+    }
+  }
+
+  //alarm detection protocol 2 of 2
+  {
+    tempC=dht.temperature_C;
+    hum=dht.humidity;
+    if(hum >= 50)
+    {
+      highhum = true;
+      Serial.println("***high humidity!***"); 
+    }
+ 
+    if(tempC >= 25)
+    {
+      hightemp = true;
+      Serial.println("***high temp!***"); 
+    }
+ 
+    //Give the sensors, arduino, a half second rest. Save some electricity, prolong hardware life,
+    //and actually be able to read values on the arduino console
+    delay (500);
+  }
+}
