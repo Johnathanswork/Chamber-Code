@@ -1,5 +1,5 @@
 # Chamber-Code
-Code to maintain an environmental chamber at a set temperature.
+Code to maintain an environmental chamber at a set temperature. The below photo is the circuitry.
 
 
 ![chamber circuitry](https://github.com/user-attachments/assets/b17cd3fc-5530-4cca-b108-4e801df46bd5)
